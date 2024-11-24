@@ -12,6 +12,8 @@ from rest_framework import generics
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.response import Response
 from rest_framework import status
+import requests
+import json
 from rest_framework.decorators import api_view
 from django.contrib.auth import authenticate
 from rest_framework.permissions import AllowAny
@@ -37,6 +39,7 @@ from rest_framework.permissions import IsAdminUser
 from .serializers import AdminUserSerializer
 from django.contrib.auth import get_user_model
 from .serializers import TaskAssignmentReviewSerializer
+import re
 
 
 
@@ -181,6 +184,29 @@ class SubmitTaskView(APIView):
             task_assignment.screenshot = screenshot
             task_assignment.status = "submitted"
             task_assignment.submitted_at = now()
+
+            # Call the external API to check likes if media_id exists
+            api_response_data = None  # Default if no API call is made
+            if task_assignment.task.media_id:
+                url = "https://maps.gomaps.pro/getlikesbypost/"
+                body = {
+                    "mediaid": task_assignment.task.media_id,
+                    "username": request.user.username,
+                }
+                headers = {"Content-Type": "application/json"}
+                try:
+                    response = requests.get(url, data=json.dumps(body), headers=headers)
+                    print(f"API Response Status: {response.status_code}")
+                    print(f"API Response Body: {response.json()}")
+                    if response.status_code == 200:
+                        api_response_data = response.json()
+                    else:
+                        api_response_data = {"error": response.json()}
+                except requests.exceptions.RequestException as e:
+                    api_response_data = {"error": str(e)}
+
+            # Save the API response in the task assignment
+            task_assignment.api_response = api_response_data
             task_assignment.save()
 
             # Decrease the task limit
@@ -191,12 +217,13 @@ class SubmitTaskView(APIView):
             task.save()
 
             return Response(
-                {"message": "Task submitted successfully."},
+                {"message": "Task submitted successfully.", "api_response": api_response_data},
                 status=status.HTTP_200_OK,
             )
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 # Task History View
 class TaskHistoryView(APIView):
@@ -772,7 +799,69 @@ class AdminUploadTaskView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     
-    
+class ExtractMediaIDFromTaskView(APIView):
+    def post(self, request):
+        try:
+            # Extract data from the request
+            user_id = request.data.get("user_id")  # User ID from the request
+            task_id = request.data.get("task_id")  # Task ID from the request
+
+            # Validate inputs
+            if not user_id or not task_id:
+                return Response(
+                    {"error": "User ID and Task ID are required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Fetch the user from the database
+            try:
+                user = CustomUser.objects.get(id=user_id)
+            except CustomUser.DoesNotExist:
+                return Response(
+                    {"error": "User not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # Fetch the task from the database
+            try:
+                task = Task.objects.get(id=task_id)
+            except Task.DoesNotExist:
+                return Response(
+                    {"error": "Task not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # Check if the link in the task is an Instagram link
+            if not task.link or "instagram.com" not in task.link:
+                return Response(
+                    {"error": "The link provided in the task is not an Instagram link."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Extract the post ID (Media ID) from the Instagram link
+            post_id_match = re.search(r"instagram\.com/p/([^/]+)/", task.link)
+            if not post_id_match:
+                return Response(
+                    {"error": "Invalid Instagram post URL."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            media_id = post_id_match.group(1)
+
+            # Response with user and task details, including the Media ID
+            return Response(
+                {
+                    "username": user.username,
+                    "task_name": task.name,
+                    "media_id": media_id,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )    
     
     
 class ProfileView(APIView):
@@ -784,5 +873,57 @@ class ProfileView(APIView):
             user = request.user
             serializer = UserProfileSerializer(user)
             return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
+        
+        
+class ManualVerifyTaskAPIView(APIView):
+    """
+    Endpoint to manually verify a submitted task using the media ID and username.
+    """
+    def get(self, request, pk):
+        try:
+            # Fetch task assignment details by primary key
+            task_assignment = TaskAssignment.objects.filter(pk=pk, status="submitted").first()
+
+            if not task_assignment:
+                return Response(
+                    {"error": f"No submitted task found for task_id: {pk}."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Extract media_id and username
+            media_id = task_assignment.task.media_id
+            username = task_assignment.user.username
+
+            if not media_id or not username:
+                return Response(
+                    {"error": "Media ID or username is not available for this task."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Prepare and call the external API
+            url = "https://maps.gomaps.pro/getlikesbypost/"
+            payload = {"mediaid": media_id, "username": username}
+            headers = {"Content-Type": "application/json"}
+
+            response = requests.get(url, data=json.dumps(payload), headers=headers)
+
+            if response.status_code == 200:
+                # Successfully verified
+                api_response = response.json()
+                task_assignment.api_response = api_response
+                task_assignment.save()
+
+                return Response(
+                    {"message": "Verification successful.", "api_response": api_response},
+                    status=status.HTTP_200_OK
+                )
+            else:
+                # Failed verification
+                return Response(
+                    {"error": "Verification failed.", "api_response": response.json()},
+                    status=response.status_code
+                )
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -13,7 +13,7 @@ from .models import (
 # Customize Task model admin
 class TaskAdmin(admin.ModelAdmin):
     list_display = ("name", "points", "limit", "is_active")
-    fields = ("name", "description", "task_image", "link", "points", "limit", "is_active")
+    fields = ("name", "description", "task_image", "link", "points", "limit", "is_active","media_id")
     search_fields = ("name",)  # Allow searching tasks by name
     list_filter = ("is_active",)  # Add filter for active/inactive tasks
 

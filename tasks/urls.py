@@ -4,7 +4,7 @@ from .views import (
     ActiveTaskView, ProtectedView, TaskListCreateView, TaskAssignmentView, SubmitTaskView, TaskHistoryView,
     AdminReviewTaskView, RedemptionRequestView, RedemptionHistoryView, AdminRedemptionReviewView, generate_token, 
     RefreshTokenView, WalletDetailView, AdminDashboardMetricsView, AdminRedemptionRequestView, 
-    AdminUserListView, SubmittedTasksView,AdminUploadTaskView,ProfileView
+    AdminUserListView, SubmittedTasksView,AdminUploadTaskView,ProfileView,ExtractMediaIDFromTaskView,ManualVerifyTaskAPIView
 )
 
 urlpatterns = [
@@ -25,6 +25,8 @@ urlpatterns = [
     path('tasks/<int:task_id>/submit/', SubmitTaskView.as_view(), name='submit_task'),
     path('task-history/', TaskHistoryView.as_view(), name='task_history'),
     path('admin/submitted-tasks/', SubmittedTasksView.as_view(), name='submitted_tasks'),
+    path("tasks/<int:pk>/manual-verify/", ManualVerifyTaskAPIView.as_view(), name="manual_verify_task"),
+    
 
     # Wallet Management
     path('wallet/', WalletDetailView.as_view(), name='wallet_detail'),
@@ -42,4 +44,5 @@ urlpatterns = [
     path('admin/upload-task/', AdminUploadTaskView.as_view(), name='admin_upload_task'),
     path('admin/dashboard-metrics/', AdminDashboardMetricsView.as_view(), name='admin_dashboard_metrics'),
     path('admin/review-task/<int:pk>/', AdminReviewTaskView.as_view(), name='review_task'),
+    path("extract-media-id-from-task/", ExtractMediaIDFromTaskView.as_view(), name="extract-media-id-from-task"),
 ]

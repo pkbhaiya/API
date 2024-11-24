@@ -54,24 +54,24 @@ class TaskSerializer(serializers.ModelSerializer):
         model = Task
         fields = [
             'id', 'name', 'description', 'points', 'limit',
-            'task_image', 'link', 'created_at', 'unique_id'
+            'task_image', 'link', 'created_at', 'unique_id', 'media_id'
         ]
         read_only_fields = ['id', 'created_at', 'unique_id']
 
+    def validate_points(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Points must be greater than 0.")
+        return value
+
+    def validate_limit(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Limit must be greater than 0.")
+        return value
+
     def validate(self, data):
-        required_fields = ['name', 'description', 'points', 'limit']
-        for field in required_fields:
-            if not data.get(field):
-                raise serializers.ValidationError({field: "This field is required."})
-
-        if data.get('points', 0) <= 0:
-            raise serializers.ValidationError({'points': "Points must be greater than 0."})
-
-        if data.get('limit', 0) <= 0:
-            raise serializers.ValidationError({'limit': "Limit must be greater than 0."})
-
+        if not data.get('media_id'):
+            raise serializers.ValidationError({'media_id': "This field is required."})
         return data
-
 
 
 # Task Assignment Serializer
@@ -81,7 +81,7 @@ class TaskAssignmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TaskAssignment
-        fields = ['id', 'user', 'task', 'status', 'assigned_at', 'submitted_at', 'reviewed_at']
+        fields = ['id', 'user', 'task', 'status', 'assigned_at', 'submitted_at', 'reviewed_at','api_response']
         read_only_fields = ['status', 'assigned_at', 'submitted_at', 'reviewed_at']
 
 
@@ -181,11 +181,12 @@ class TaskAssignmentReviewSerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField(read_only=True)  # To show username
     task_name = serializers.CharField(source="task.name", read_only=True)
     task_points = serializers.IntegerField(source="task.points", read_only=True)
+    media_id = serializers.CharField(source="task.media_id", read_only=True)
 
     class Meta:
         model = TaskAssignment
-        fields = ['id', 'user', 'task_name', 'task_points', 'status', 'assigned_at', 'submitted_at', 'reviewed_at','screenshot']
-        read_only_fields = ['user', 'task_name', 'task_points', 'assigned_at', 'submitted_at', 'reviewed_at']
+        fields = ['id', 'user', 'task_name', 'task_points', 'status', 'assigned_at', 'submitted_at', 'reviewed_at','screenshot','api_response','media_id']
+        read_only_fields = ['user', 'task_name', 'task_points', 'assigned_at', 'submitted_at', 'reviewed_at','api_response','media_id']
         
         
 class UserProfileSerializer(ModelSerializer):

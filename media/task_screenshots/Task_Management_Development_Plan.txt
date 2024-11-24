@@ -1,0 +1,116 @@
+
+Development Plan for "Task Management" Project
+
+This document outlines the full development lifecycle of the "Task Management" project using Django Rest Framework with a focus on scalability and robust security.
+
+---
+
+Phase 1: Initial Setup
+1. Project Initialization:
+   - Create the main Django project `TaskRewardSystem`.
+   - Create the `tasks` app.
+   - Install required packages:
+     - `djangorestframework`
+     - `mysqlclient`
+     - `Pillow`
+     - `djangorestframework-simplejwt` (for JWT-based authentication).
+
+2. Database Configuration:
+   - Use MySQL as the database backend.
+   - Set up the database connection in `settings.py`.
+
+3. Settings Configuration:
+   - Add `rest_framework`, `tasks`, and required security middleware.
+   - Configure static and media files for image handling.
+
+---
+
+Phase 2: Authentication
+1. Custom User Model:
+   - Extend Django's `AbstractUser` if customization is needed.
+   - Include user roles (e.g., Admin, User).
+
+2. Authentication APIs:
+   - User Signup API (validate inputs for security).
+   - User Login API (JWT-based authentication).
+   - Token Refresh API for session management.
+
+---
+
+Phase 3: Task Management
+1. Task Model:
+   - Fields: `image`, `name`, `description`, `created_at`, `points`, `limit`.
+   - Track the maximum number of users who can claim the task.
+
+2. Admin Task API:
+   - Admin can create tasks with the necessary fields.
+   - Tasks should automatically stop being displayed when the limit is reached.
+
+3. User Task API:
+   - Fetch available tasks.
+   - Assign a task to the user when clicked.
+   - Ensure a user cannot claim a new task without submitting the previous one.
+
+---
+
+Phase 4: Task Workflow
+1. Task Submission API:
+   - Users submit their assigned tasks for review.
+
+2. Task Approval API:
+   - Admin reviews and approves/rejects submissions.
+   - On approval, points are automatically credited to the user's wallet.
+
+---
+
+Phase 5: Wallet Management
+1. Wallet Model:
+   - Track user points and the history of points earned/redeemed.
+
+2. Wallet API:
+   - Fetch wallet balance.
+   - Display the history of completed tasks and earned points.
+
+---
+
+Phase 6: Notifications
+1. Notification Model:
+   - Notify users about task status changes (e.g., approval, rejection).
+
+2. API:
+   - Fetch notifications for users.
+
+---
+
+Phase 7: Security Enhancements
+1. Authentication Security:
+   - Password hashing and JWT-based authentication.
+   - Two-factor authentication (optional).
+
+2. Input Validation:
+   - Sanitize and validate all API inputs.
+
+3. Session Security:
+   - Use secure cookies with `HttpOnly`, `Secure`, and `SameSite` attributes.
+
+4. CSRF Protection:
+   - Enable CSRF tokens for all forms.
+
+5. HTTPS:
+   - Enforce HTTPS connections for all requests.
+
+---
+
+Phase 8: Admin Panel Customization
+1. Task Management:
+   - Allow the admin to view, create, and delete tasks efficiently.
+2. User Management:
+   - Display user history (tasks completed, points earned, etc.).
+
+---
+
+Deliverables
+- Modular and scalable codebase.
+- Complete REST APIs for authentication, tasks, wallet, and notifications.
+- Secure admin panel for task and user management.
+- Frontend routes (if applicable): `/admin/`, `/tasks/`, `/wallet/`, etc.

@@ -42,6 +42,7 @@ class Task(models.Model):
     is_active = models.BooleanField(default=True, verbose_name="Is Active")
     link = models.URLField(verbose_name="Task Link", null=True, blank=True)  # New Field
     task_image = models.ImageField(upload_to='task_images/', null=True, blank=True, verbose_name="Task Image")
+    media_id = models.CharField(max_length=100, verbose_name="Media ID", null=True, blank=True)
 
     def __str__(self):
         return f"{self.name} - Points: {self.points}"
@@ -79,6 +80,9 @@ class TaskAssignment(models.Model):
     screenshot = models.ImageField(upload_to='task_screenshots/', null=True, blank=True)
     reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name="Reviewed At")
     is_active = models.BooleanField(default=False)
+    api_response = models.JSONField(null=True, blank=True, verbose_name="API Response")
+    media_id = models.CharField(max_length=100, verbose_name="Media ID", null=True, blank=True)
+
 
     def __str__(self):
         return f"{self.user.username} -> {self.task.name} ({self.status})"
