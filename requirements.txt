@@ -1,20 +1,31 @@
+amqp==5.3.1
 archspec @ file:///home/conda/feedstock_root/build_artifacts/archspec_1708969572489/work
 asgiref==3.8.1
 attrs==24.2.0
+billiard==4.2.1
 boltons @ file:///home/conda/feedstock_root/build_artifacts/boltons_1711936407380/work
 Brotli @ file:///Users/runner/miniforge3/conda-bld/brotli-split_1725267563793/work
+celery==5.4.0
 certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1725278078093/work/certifi
 cffi @ file:///Users/runner/miniforge3/conda-bld/cffi_1725560622100/work
 charset-normalizer @ file:///home/conda/feedstock_root/build_artifacts/charset-normalizer_1698833585322/work
+click==8.1.7
+click-didyoumean==0.3.1
+click-plugins==1.1.1
+click-repl==0.3.0
 colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1666700638685/work
 conda @ file:///Users/runner/miniforge3/conda-bld/conda_1727884695093/work
 conda-libmamba-solver @ file:///home/conda/feedstock_root/build_artifacts/conda-libmamba-solver_1727359833193/work/src
 conda-package-handling @ file:///home/conda/feedstock_root/build_artifacts/conda-package-handling_1717678605937/work
 conda_package_streaming @ file:///home/conda/feedstock_root/build_artifacts/conda-package-streaming_1717678526951/work
+cron-descriptor==1.4.5
 distro @ file:///home/conda/feedstock_root/build_artifacts/distro_1704321475663/work
 Django==4.2.16
+django-celery-beat==2.7.0
 django-cors-headers==4.4.0
+django-cron==0.6.0
 django-sslserver==0.22
+django-timezone-field==7.0
 djangorestframework==3.15.2
 djangorestframework-simplejwt==5.3.1
 drf-yasg==1.21.8
@@ -29,6 +40,7 @@ inflection==0.5.1
 instaloader==4.13.2
 jsonpatch @ file:///home/conda/feedstock_root/build_artifacts/jsonpatch_1695536281965/work
 jsonpointer @ file:///Users/runner/miniforge3/conda-bld/jsonpointer_1725302889598/work
+kombu==5.4.2
 libmambapy @ file:///Users/runner/miniforge3/conda-bld/mamba-split_1727883562521/work/libmambapy
 menuinst @ file:///Users/runner/miniforge3/conda-bld/menuinst_1725358995849/work
 outcome==1.3.0.post0
@@ -36,10 +48,13 @@ packaging @ file:///home/conda/feedstock_root/build_artifacts/packaging_17181894
 pillow==10.4.0
 platformdirs @ file:///home/conda/feedstock_root/build_artifacts/platformdirs_1726613481435/work
 pluggy @ file:///home/conda/feedstock_root/build_artifacts/pluggy_1713667077545/work
+prompt_toolkit==3.0.48
 pycosat @ file:///Users/runner/miniforge3/conda-bld/pycosat_1696355892939/work
 pycparser @ file:///home/conda/feedstock_root/build_artifacts/pycparser_1711811537435/work
 PyJWT==2.9.0
 PySocks @ file:///home/conda/feedstock_root/build_artifacts/pysocks_1661604839144/work
+python-crontab==3.2.0
+python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 pytz==2024.2
 PyYAML==6.0.2
@@ -47,6 +62,7 @@ requests @ file:///home/conda/feedstock_root/build_artifacts/requests_1717057054
 ruamel.yaml @ file:///Users/runner/miniforge3/conda-bld/ruamel.yaml_1707298177583/work
 ruamel.yaml.clib @ file:///Users/runner/miniforge3/conda-bld/ruamel.yaml.clib_1707314608714/work
 selenium==4.26.1
+six==1.16.0
 sniffio==1.3.1
 sortedcontainers==2.4.0
 sqlparse==0.5.1
@@ -54,8 +70,11 @@ tqdm @ file:///home/conda/feedstock_root/build_artifacts/tqdm_1722737464726/work
 trio==0.27.0
 trio-websocket==0.11.1
 typing_extensions==4.12.2
+tzdata==2024.2
 uritemplate==4.1.1
 urllib3 @ file:///home/conda/feedstock_root/build_artifacts/urllib3_1726496430923/work
+vine==5.1.0
+wcwidth==0.2.13
 webdriver-manager==4.0.2
 websocket-client==1.8.0
 wsproto==1.2.0

@@ -1,63 +1,45 @@
 from django.utils.timezone import now
-from django.db.models import Sum
-from rest_framework import generics, permissions
-from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError
-from rest_framework.pagination import PageNumberPagination
-from tasks.models import Redemption
-from rest_framework import viewsets, permissions
-from rest_framework.parsers import MultiPartParser, FormParser
-from .models import Redemption, CustomUser, Task, TaskAssignment, Notification
-from rest_framework_simplejwt.views import TokenRefreshView,TokenObtainPairView
-from rest_framework import generics
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework.response import Response
-from rest_framework import status
-import requests
-from rest_framework.permissions import IsAdminUser
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from django.db.models import Sum, Count
-from .models import User, Referral, TaskAssignment, Redemption
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status, permissions
-from .models import CoinConversionRate
-from .serializers import CoinConversionRateSerializer
-from .models import Referral
-from .serializers import ReferralSerializer
-import json
-from .serializers import SignupSerializer
-from rest_framework.decorators import api_view
-from django.contrib.auth import authenticate
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from rest_framework import status, permissions
-from .models import Wallet, PointsTransaction
-from .serializers import WalletSerializer, PointsTransactionSerializer,UserProfileSerializer,ReferralMilestoneRewardSerializer
-from tasks.models import Task, PointsTransaction, RedemptionRequest,Referral
-from rest_framework.permissions import IsAdminUser
-from django.db.models import Sum
-from rest_framework.response import Response
-from rest_framework.permissions import IsAdminUser
-from tasks.models import Task, PointsTransaction, RedemptionRequest,ReferralMilestoneReward
-from .serializers import RedemptionRequestSerializer
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from rest_framework import status
-from .models import RedemptionRequest
-from .serializers import RedemptionRequestSerializer
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAdminUser
-from .serializers import AdminUserSerializer
-from django.contrib.auth import get_user_model
-from .serializers import TaskAssignmentReviewSerializer
-import re
 from datetime import datetime, timedelta
-from .models import TaskAssignment, Wallet, PointsTransaction, Referral
-from .serializers import TaskAssignmentReviewSerializer
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.exceptions import ValidationError
+from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.permissions import IsAdminUser, IsAuthenticated, AllowAny
+from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import authenticate
+
+from tasks.models import (
+    Task, 
+    TaskAssignment, 
+    PointsTransaction, 
+    Redemption, 
+    RedemptionRequest, 
+    Referral, 
+    ReferralMilestoneReward, 
+    Wallet, 
+    Notification
+)
+from .models import CoinConversionRate, CustomUser
+from .serializers import (
+    CoinConversionRateSerializer,
+    RedemptionRequestSerializer,
+    ReferralSerializer,
+    ReferralMilestoneRewardSerializer,
+    TaskAssignmentReviewSerializer,
+    UserProfileSerializer,
+    WalletSerializer,
+    PointsTransactionSerializer
+)
+
+import requests
+import re
+import json
+
 
 
 
@@ -747,8 +729,6 @@ class RedemptionRequestView(APIView):
 
 
 
-
-
 class AdminDashboardMetricsView(APIView):
     permission_classes = [IsAdminUser]
 
@@ -767,9 +747,7 @@ class AdminDashboardMetricsView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=500)
     
-    
-    
-from django.utils import timezone  # Import timezone for setting timestamps
+
 
 class AdminRedemptionRequestView(APIView):
     permission_classes = [permissions.IsAdminUser]
@@ -917,8 +895,7 @@ class SubmittedTasksView(APIView):
         )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    
-    
+
 class AdminUploadTaskView(APIView):
     permission_classes = [permissions.IsAdminUser]
     parser_classes = [MultiPartParser, FormParser]  # These parsers handle file uploads
@@ -930,8 +907,7 @@ class AdminUploadTaskView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    
-    
+ 
 class ExtractMediaIDFromTaskView(APIView):
     def post(self, request):
         try:
@@ -1007,8 +983,19 @@ class ProfileView(APIView):
             serializer = UserProfileSerializer(user)
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    def put(self, request):
+        """Update user profile data."""
+        try:
+            user = request.user
+            serializer = UserProfileSerializer(user, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         
 class ManualVerifyTaskAPIView(APIView):
@@ -1062,12 +1049,6 @@ class ManualVerifyTaskAPIView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-        
-        
-
-
-
-
 
         
 class ReferralMilestoneRewardAPIView(APIView):
@@ -1212,10 +1193,7 @@ def get_referral_link(request):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    
-    
-    
-    
+  
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_my_referred_users(request):
@@ -1229,10 +1207,6 @@ def get_my_referred_users(request):
     )
 
     return Response({"referrals": list(referrals)})
-
-
-
-
 
 
 

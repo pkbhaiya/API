@@ -1,10 +1,27 @@
 from django.urls import path
 from . import views
 from .views import (
-    ActiveTaskView, ProtectedView, TaskListCreateView, TaskAssignmentView, SubmitTaskView, TaskHistoryView,
-    AdminReviewTaskView, RedemptionRequestView, RedemptionHistoryView, AdminRedemptionReviewView, generate_token, 
-    RefreshTokenView, WalletDetailView, AdminDashboardMetricsView, AdminRedemptionRequestView, 
-    AdminUserListView, SubmittedTasksView,AdminUploadTaskView,ProfileView,ExtractMediaIDFromTaskView,ManualVerifyTaskAPIView,get_referral_link, get_my_referred_users,ReferralMilestoneRewardAPIView,
+    ActiveTaskView, 
+    ProtectedView, 
+    TaskListCreateView, 
+    TaskAssignmentView, 
+    SubmitTaskView, 
+    TaskHistoryView,
+    AdminReviewTaskView, 
+    RedemptionRequestView, 
+    RedemptionHistoryView, 
+    AdminRedemptionReviewView, generate_token, 
+    RefreshTokenView, 
+    WalletDetailView,
+    AdminDashboardMetricsView, 
+    AdminRedemptionRequestView, 
+    AdminUserListView, 
+    SubmittedTasksView,
+    AdminUploadTaskView,
+    ProfileView,
+    ExtractMediaIDFromTaskView,
+    ManualVerifyTaskAPIView,get_referral_link, get_my_referred_users,
+    ReferralMilestoneRewardAPIView,
     CoinConversionRateAPIView,
     
 )

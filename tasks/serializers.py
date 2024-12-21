@@ -8,7 +8,7 @@ from .models import Wallet, PointsTransaction
 from .models import RedemptionRequest
 from django.contrib.auth import get_user_model
 from django.db.models import Sum
-from rest_framework.serializers import ModelSerializer
+from rest_framework.serializers import ModelSerializer,CharField
 from .models import CustomUser, Referral,ReferralMilestoneReward
 from django.core.exceptions import ValidationError
 
@@ -214,10 +214,17 @@ class TaskAssignmentReviewSerializer(serializers.ModelSerializer):
         
         
 class UserProfileSerializer(ModelSerializer):
+    username = CharField(required=True, max_length=150)
+
     class Meta:
         model = User
-        fields = ['username', 'email', 'first_name', 'last_name']        
-        
+        fields = ['username', 'email', 'first_name', 'last_name']
+
+    def validate_username(self, value):
+        """Ensure the username is unique."""
+        if User.objects.filter(username=value).exists():
+            raise ValidationError("This username is already taken.")
+        return value
         
 
 
