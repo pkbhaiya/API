@@ -23,9 +23,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-x91j(3@$%&a1w8%-a4@sg+szxrmejt49q4$h(x(q^&5p+&rhs2'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
+
 
 
 # Application definition
@@ -147,16 +148,38 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 
+# REST_FRAMEWORK = {
+#     'DEFAULT_RENDERER_CLASSES': [
+#         'rest_framework.renderers.JSONRenderer',
+#     ] if not os.getenv('DEBUG', 'True').lower() == 'true' else [
+#         'rest_framework.renderers.JSONRenderer',
+#         'rest_framework.renderers.BrowsableAPIRenderer',
+#     ],
+#     'DEFAULT_AUTHENTICATION_CLASSES': [
+#         'rest_framework_simplejwt.authentication.JWTAuthentication',
+#     ],
+# }
+
+
 REST_FRAMEWORK = {
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',  # Enable only JSON rendering
+    ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
 }
 
+
+
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=500),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),  # Shorter for better security
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),    # Users can stay logged in for a week
+    'ROTATE_REFRESH_TOKENS': True,                 # Refresh token rotation
+    'BLACKLIST_AFTER_ROTATION': True,              # Blacklist old tokens
+    'AUTH_HEADER_TYPES': ('Bearer',),              # Default is 'Bearer'
 }
+
 
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
