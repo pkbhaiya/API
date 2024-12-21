@@ -9,40 +9,14 @@ from .models import RedemptionRequest
 from django.contrib.auth import get_user_model
 from django.db.models import Sum
 from rest_framework.serializers import ModelSerializer
+from .models import CustomUser, Referral,ReferralMilestoneReward
+from django.core.exceptions import ValidationError
 
 
 
 
 
-# User Serializer
-class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CustomUser
-        fields = [
-            'username',
-            'first_name',
-            'last_name',
-            'whatsapp_number',
-            'email',
-            'address',
-            'password',
-        ]
-        extra_kwargs = {
-            'password': {'write_only': True},  # Ensure the password is not exposed in responses
-        }
 
-    def create(self, validated_data):
-        # Create the user with hashed password
-        user = CustomUser.objects.create_user(
-            username=validated_data['username'],
-            first_name=validated_data['first_name'],
-            last_name=validated_data['last_name'],
-            whatsapp_number=validated_data['whatsapp_number'],
-            email=validated_data['email'],
-            address=validated_data['address'],
-            password=validated_data['password'],
-        )
-        return user
 
 
 # Task Serializer
@@ -50,13 +24,26 @@ from rest_framework import serializers
 from .models import Task
 
 class TaskSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()  # Add image URL dynamically
+
     class Meta:
         model = Task
         fields = [
             'id', 'name', 'description', 'points', 'limit',
-            'task_image', 'link', 'created_at', 'unique_id', 'media_id'
+            'predefined_image', 'link', 'created_at', 'unique_id', 'media_id', 'image_url'
         ]
         read_only_fields = ['id', 'created_at', 'unique_id']
+
+    def get_image_url(self, obj):
+        """
+        Returns the image URL based on predefined_image or media_id.
+        """
+        request = self.context.get('request')
+        if obj.predefined_image:  # Use predefined images if available
+            image_path = f"/media/task_images/{obj.predefined_image.lower()}.png"
+            return request.build_absolute_uri(image_path)
+        return None  # If no predefined image is set, return None
+
 
     def validate_points(self, value):
         if value <= 0:
@@ -72,6 +59,7 @@ class TaskSerializer(serializers.ModelSerializer):
         if not data.get('media_id'):
             raise serializers.ValidationError({'media_id': "This field is required."})
         return data
+
 
 
 # Task Assignment Serializer
@@ -107,7 +95,7 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 
 
-# tasks/serializers.py
+
 
 
 
@@ -115,23 +103,62 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 class SignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
-
     class Meta:
         model = CustomUser
-        fields = ('username', 'first_name', 'last_name', 'whatsapp_number', 'email', 'address', 'password')
+        fields = ['username', 'password', 'first_name', 'last_name', 'whatsapp_number', 'email']
 
     def create(self, validated_data):
-        user = CustomUser(
-            username=validated_data['username'],
-            first_name=validated_data['first_name'],
-            last_name=validated_data['last_name'],
-            whatsapp_number=validated_data['whatsapp_number'],
-            email=validated_data['email'],
-            address=validated_data['address'],
-        )
+        user = CustomUser(**validated_data)
         user.set_password(validated_data['password'])
         user.save()
         return user
+
+
+
+
+
+
+
+
+
+
+# User Serializer
+class UserSerializer(serializers.ModelSerializer):
+    referral_count = serializers.SerializerMethodField()
+    referred_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomUser
+        fields = [
+            'username',
+            'first_name',
+            'last_name',
+            'whatsapp_number',
+            'email',
+            'referral_code',
+            'referral_count',
+            'referred_by'
+        ]
+
+    def get_referral_count(self, obj):
+        return obj.referrals.count()
+
+    def get_referred_by(self, obj):
+        return obj.referred_by.referral_code if obj.referred_by else None
+
+class ReferralSerializer(serializers.ModelSerializer):
+    referred_by = serializers.StringRelatedField()
+    referred_to = serializers.StringRelatedField()
+
+    class Meta:
+        model = Referral
+        fields = ['id', 'referred_by', 'referred_to', 'created_at']
+
+
+class ReferralMilestoneRewardSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReferralMilestoneReward
+        fields = ['id', 'tasks_required', 'points']
 
 
 
@@ -156,10 +183,7 @@ class RedemptionRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = RedemptionRequest
         fields = ['id', 'user_username', 'points', 'upi_id', 'status', 'created_at', 'reviewed_at']
-
-        
-        
-        
+   
         
 User = get_user_model()
 
@@ -193,3 +217,16 @@ class UserProfileSerializer(ModelSerializer):
     class Meta:
         model = User
         fields = ['username', 'email', 'first_name', 'last_name']        
+        
+        
+
+
+from .models import CoinConversionRate
+
+class CoinConversionRateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CoinConversionRate
+        fields = ['id', 'coins', 'rupees']       
+
+
+

@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 from tasks.models import Redemption
+from rest_framework import viewsets, permissions
 from rest_framework.parsers import MultiPartParser, FormParser
 from .models import Redemption, CustomUser, Task, TaskAssignment, Notification
 from rest_framework_simplejwt.views import TokenRefreshView,TokenObtainPairView
@@ -13,20 +14,33 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.response import Response
 from rest_framework import status
 import requests
+from rest_framework.permissions import IsAdminUser
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.db.models import Sum, Count
+from .models import User, Referral, TaskAssignment, Redemption
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status, permissions
+from .models import CoinConversionRate
+from .serializers import CoinConversionRateSerializer
+from .models import Referral
+from .serializers import ReferralSerializer
 import json
+from .serializers import SignupSerializer
 from rest_framework.decorators import api_view
 from django.contrib.auth import authenticate
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status, permissions
 from .models import Wallet, PointsTransaction
-from .serializers import WalletSerializer, PointsTransactionSerializer,UserProfileSerializer
-from tasks.models import Task, PointsTransaction, RedemptionRequest
+from .serializers import WalletSerializer, PointsTransactionSerializer,UserProfileSerializer,ReferralMilestoneRewardSerializer
+from tasks.models import Task, PointsTransaction, RedemptionRequest,Referral
 from rest_framework.permissions import IsAdminUser
 from django.db.models import Sum
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
-from tasks.models import Task, PointsTransaction, RedemptionRequest
+from tasks.models import Task, PointsTransaction, RedemptionRequest,ReferralMilestoneReward
 from .serializers import RedemptionRequestSerializer
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
@@ -40,6 +54,12 @@ from .serializers import AdminUserSerializer
 from django.contrib.auth import get_user_model
 from .serializers import TaskAssignmentReviewSerializer
 import re
+from datetime import datetime, timedelta
+from .models import TaskAssignment, Wallet, PointsTransaction, Referral
+from .serializers import TaskAssignmentReviewSerializer
+from rest_framework.decorators import api_view, permission_classes
+
+
 
 
 
@@ -57,21 +77,35 @@ from .serializers import (
     NotificationSerializer
 )
 
-# Signup View
-from rest_framework import status
 
-class SignupView(generics.CreateAPIView):
-    queryset = CustomUser.objects.all()
-    serializer_class = UserSerializer
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        return Response(
-            {"message": "User created successfully"},
-            status=status.HTTP_201_CREATED
-        )
+
+
+
+class ReferralListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ReferralSerializer
+
+    def get_queryset(self):
+        return Referral.objects.filter(referred_by=self.request.user)
+
+
+class ReferralDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ReferralSerializer
+
+    def get_object(self):
+        try:
+            return Referral.objects.get(referred_to=self.request.user)
+        except Referral.DoesNotExist:
+            return None
+
+    def retrieve(self, request, *args, **kwargs):
+        referral = self.get_object()
+        if referral is None:
+            return Response({"message": "You were not referred by anyone."}, status=status.HTTP_200_OK)
+        serializer = self.get_serializer(referral)
+        return Response(serializer.data)
 
 
 # Protected View Example
@@ -83,17 +117,19 @@ class ProtectedView(APIView):
 
 
 # Task List and Create View
-from rest_framework import generics, permissions
-from .models import Task
-from .serializers import TaskSerializer
+
 
 class TaskListCreateView(generics.ListCreateAPIView):
     serializer_class = TaskSerializer
 
     def get_queryset(self):
+        """
+        Get tasks available for the user while marking expired tasks as unassigned.
+        """
         user = self.request.user
+        self._deassign_expired_tasks()
+
         if user.is_authenticated:
-            # Exclude tasks already assigned or submitted by the user
             excluded_task_ids = TaskAssignment.objects.filter(
                 user=user
             ).values_list('task_id', flat=True)
@@ -101,12 +137,37 @@ class TaskListCreateView(generics.ListCreateAPIView):
             return Task.objects.filter(
                 is_active=True
             ).exclude(id__in=excluded_task_ids)
-        return Task.objects.filter(is_active=True)  # For anonymous users, show active tasks only
+
+        return Task.objects.filter(is_active=True)
+
+    def list(self, request, *args, **kwargs):
+        """
+        Override the list method to pass request context to the serializer.
+        """
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    def _deassign_expired_tasks(self):
+        expiry_time = now() - timedelta(minutes=5)
+        expired_assignments = TaskAssignment.objects.filter(
+            status='assigned',
+            assigned_at__lt=expiry_time
+        )
+
+        for assignment in expired_assignments:
+            assignment.status = 'expired'
+            assignment.is_active = False
+            assignment.save()
+
+        Task.objects.filter(
+            assignments__in=expired_assignments
+        ).update(is_active=True)
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [permissions.IsAdminUser()]  # Only admins can create tasks
-        return [permissions.AllowAny()]  # Anyone can view tasks
+            return [permissions.IsAdminUser()]
+        return [permissions.AllowAny()]
 
 
 
@@ -281,7 +342,9 @@ class AdminReviewTaskView(APIView):
             task_assignment.reviewed_at = now()
             task_assignment.save()
 
+            # If approved, credit points to the user and possibly the referrer
             if review_status == "approved":
+                # Credit points to the user completing the task
                 wallet, _ = Wallet.objects.get_or_create(user=task_assignment.user)
                 wallet.balance += task_assignment.task.points
                 wallet.save()
@@ -292,6 +355,33 @@ class AdminReviewTaskView(APIView):
                     transaction_type="credit",
                     description=f"Points credited for task: {task_assignment.task.name}",
                 )
+
+                # Attempt to update the referral bonus if this user was referred
+                try:
+                    # Fetch the Referral object for the user who completed the task
+                    referral = Referral.objects.get(referred_to=task_assignment.user)
+                    # Increment tasks completed by the referred user
+                    referral.tasks_completed += 1
+                    referral.save()
+
+                    # Check if the referred user has completed 20 approved tasks
+                    if referral.tasks_completed >= 20:
+                        # Award bonus points to the referrer
+                        # Ensure the referrer has a 'bonus_points' field in CustomUser model
+                        referrer = referral.referred_by
+                        referrer.bonus_points += 100
+                        referrer.save()
+
+                        # Log the points transaction for the referrer
+                        PointsTransaction.objects.create(
+                            user=referrer,
+                            amount=100,
+                            transaction_type="credit",
+                            description=f"Bonus points credited for referring {task_assignment.user.username}",
+                        )
+                except Referral.DoesNotExist:
+                    # This user was not referred by anyone, so no referral bonus is applied
+                    pass
 
             serializer = TaskAssignmentReviewSerializer(task_assignment)
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -469,16 +559,7 @@ class CustomPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 100
 
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenRefreshView
-from rest_framework import status
-from django.contrib.auth import authenticate
-from .models import CustomUser
-from .serializers import UserSerializer
+
 
 # Generate Token
 @api_view(['POST'])
@@ -505,41 +586,7 @@ class RefreshTokenView(TokenRefreshView):
     permission_classes = [AllowAny]  # Allow access to refresh tokens
 
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def signup(request):
-    username = request.data.get('username')
-    email = request.data.get('email')
-    password = request.data.get('password')
-    first_name = request.data.get('first_name')
-    last_name = request.data.get('last_name')
-    whatsapp_number = request.data.get('whatsapp_number')
-    address = request.data.get('address')
 
-    if not username or not email or not password or not first_name or not last_name or not whatsapp_number or not address:
-        return Response({'error': 'All fields are required'}, status=status.HTTP_400_BAD_REQUEST)
-
-    if CustomUser.objects.filter(username=username).exists():
-        return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
-
-    if CustomUser.objects.filter(email=email).exists():
-        return Response({'error': 'Email already exists'}, status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        user = CustomUser.objects.create_user(
-            username=username,
-            email=email,
-            password=password,
-            first_name=first_name,
-            last_name=last_name,
-            whatsapp_number=whatsapp_number,
-            address=address
-        )
-
-        serializer = UserSerializer(user)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class TaskDetailView(APIView):
@@ -557,33 +604,21 @@ class TaskDetailView(APIView):
 
 
 
-class ActiveTaskView(APIView):
-    permission_classes = [IsAuthenticated]
+from rest_framework.generics import RetrieveAPIView
 
-    def get(self, request, task_id=None):
+class ActiveTaskView(RetrieveAPIView):
+    serializer_class = TaskSerializer
+    queryset = Task.objects.all()
+
+    def get(self, request, *args, **kwargs):
+        task_id = kwargs.get('task_id')
         try:
-            # Debugging: Log user and task_id
-            print(f"Debug: User - {request.user}, Task ID - {task_id}")
+            task = self.get_queryset().get(pk=task_id)
+            serializer = self.get_serializer(task, context={'request': request})
+            return Response(serializer.data)
+        except Task.DoesNotExist:
+            return Response({"error": "Task not found."}, status=404)
 
-            # Ensure task is assigned to the authenticated user
-            task_assignment = TaskAssignment.objects.filter(
-                user=request.user, task_id=task_id, status="assigned"
-            ).first()
-
-            if not task_assignment:
-                print("Debug: No matching task assignment found.")
-                return Response(
-                    {"error": "You are not authorized to view this task."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-
-            # Serialize and return the task
-            serializer = TaskSerializer(task_assignment.task)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            print("Debug: Exception occurred -", e)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -613,55 +648,74 @@ class WalletDetailView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status, permissions
+from django.db import transaction
+from .models import Wallet, PointsTransaction, RedemptionRequest
+from .serializers import RedemptionRequestSerializer
+
 class RedemptionRequestView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        """
+        Fetch all redemption requests for the authenticated user.
+        """
         try:
-            # Fetch all redemption requests for the authenticated user
             redemption_requests = RedemptionRequest.objects.filter(user=request.user).order_by('-created_at')
             serializer = RedemptionRequestSerializer(redemption_requests, many=True)
             return Response(serializer.data, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception:
+            return Response(
+                {"error": "Unable to fetch redemption requests. Please try again later."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
+    @transaction.atomic
     def post(self, request):
+        """
+        Create a new redemption request for the authenticated user.
+        """
         try:
             points = request.data.get("points")
             upi_id = request.data.get("upi_id")
 
+            # Validate points and UPI ID
             if not points or not upi_id:
                 return Response(
                     {"error": "Points and UPI ID are required."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if points % 100 != 0:
+            try:
+                points = int(points)
+            except ValueError:
                 return Response(
-                    {"error": "Points must be a multiple of 100."},
+                    {"error": "Points must be a valid number."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            wallet, created = Wallet.objects.get_or_create(user=request.user)
+            # Enforce minimum redeemable points and multiple condition
+            MIN_REDEEMABLE = 1666
+            if points < MIN_REDEEMABLE or points % MIN_REDEEMABLE != 0:
+                return Response(
+                    {"error": f"Points must be at least {MIN_REDEEMABLE} and a multiple of {MIN_REDEEMABLE}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
+            # Check wallet balance
+            wallet, created = Wallet.objects.get_or_create(user=request.user)
             if wallet.balance < points:
                 return Response(
-                    {"error": "Insufficient balance."},
+                    {"error": "Insufficient balance. Please check your wallet."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            # Deduct points from wallet and create redemption request
             wallet.balance -= points
             wallet.save()
 
-            # Log the debit transaction
-            PointsTransaction.objects.create(
-                user=request.user,
-                amount=points,
-                transaction_type="debit",
-                description=f"Points redeemed via UPI: {upi_id}",
-            )
-
-            # Create the redemption request
             redemption_request = RedemptionRequest.objects.create(
                 user=request.user,
                 points=points,
@@ -669,10 +723,28 @@ class RedemptionRequestView(APIView):
                 status="pending",
             )
 
+            # Log the debit transaction
+            PointsTransaction.objects.create(
+                user=request.user,
+                amount=points,
+                transaction_type="debit",
+                description=f"Redemption request created for UPI: {upi_id}",
+            )
+
             serializer = RedemptionRequestSerializer(redemption_request)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        except Wallet.DoesNotExist:
+            return Response(
+                {"error": "Wallet not found for the user. Please contact support."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception:
+            return Response(
+                {"error": "An unexpected error occurred. Please try again later."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
 
 
 
@@ -766,25 +838,85 @@ class AdminRedemptionRequestView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-User = get_user_model()
+
 
 class AdminUserListView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
+        # Fetch all users
         users = User.objects.all()
-        serializer = AdminUserSerializer(users, many=True)
-        return Response(serializer.data)
+        user_data = []
+
+        for user in users:
+            # Calculate metrics
+            referrals = Referral.objects.filter(referred_by=user).count()
+            referral_points = Referral.objects.filter(referred_by=user).aggregate(
+                total_points=Sum('bonus_credited')
+            )['total_points'] or 0
+            tasks_completed = TaskAssignment.objects.filter(user=user, status="completed").count()
+            approved_orders = TaskAssignment.objects.filter(user=user, status="approved").count()
+            total_withdrawals = Redemption.objects.filter(user=user, status="approved").aggregate(
+                total_withdrawn=Sum('amount')
+            )['total_withdrawn'] or 0
+
+            # Append user data
+            user_data.append({
+                "username": user.username,
+                "whatsapp_number": user.whatsapp_number,
+                "referrals": referrals,
+                "referral_points": referral_points,
+                "tasks_completed": tasks_completed,
+                "approved_orders": approved_orders,
+                "withdrawals": total_withdrawals,
+                "wallet_balance": user.wallet.balance if hasattr(user, 'wallet') else 0
+            })
+
+        # Rank by wallet_balance, approved_orders, and referrals
+        ranked_data = sorted(
+            user_data,
+            key=lambda x: (
+                -x['wallet_balance'],  # Rank by wallet balance (highest first)
+                -x['approved_orders'],  # Then by approved orders (highest first)
+                -x['referrals']         # Then by referrals (highest first)
+            )
+        )
+
+        # Add rankings to user data
+        for rank, user in enumerate(ranked_data, start=1):
+            user["rank"] = rank
+
+        # Add summary data
+        total_users = len(user_data)
+        total_wallet_balance = sum(user["wallet_balance"] for user in user_data)
+        total_referral_points = sum(user["referral_points"] for user in user_data)
+        total_tasks_completed = sum(user["tasks_completed"] for user in user_data)
+        total_withdrawals = sum(user["withdrawals"] for user in user_data)
+
+        summary = {
+            "total_users": total_users,
+            "total_wallet_balance": total_wallet_balance,
+            "total_referral_points": total_referral_points,
+            "total_tasks_completed": total_tasks_completed,
+            "total_withdrawals": total_withdrawals,
+        }
+
+        return Response({
+            "summary": summary,
+            "users": ranked_data
+        })
     
     
 class SubmittedTasksView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        submitted_tasks = TaskAssignment.objects.filter(status='submitted')
-        serializer = TaskAssignmentSerializer(submitted_tasks, many=True)
-        return Response(serializer.data)
-    
+    def get(self, request, *args, **kwargs):
+        submitted_tasks = TaskAssignment.objects.filter(status="submitted")
+        serializer = TaskAssignmentSerializer(
+            submitted_tasks, many=True, context={'request': request}
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     
     
 class AdminUploadTaskView(APIView):
@@ -792,11 +924,12 @@ class AdminUploadTaskView(APIView):
     parser_classes = [MultiPartParser, FormParser]  # These parsers handle file uploads
 
     def post(self, request):
-        serializer = TaskSerializer(data=request.data)
+        serializer = TaskSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     
     
 class ExtractMediaIDFromTaskView(APIView):
@@ -875,7 +1008,8 @@ class ProfileView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
-        
+
+
         
 class ManualVerifyTaskAPIView(APIView):
     """
@@ -927,3 +1061,225 @@ class ManualVerifyTaskAPIView(APIView):
                 )
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        
+        
+
+
+
+
+
+        
+class ReferralMilestoneRewardAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+    """
+    API View to handle referral milestone rewards with a single URL.
+    """
+
+    def get(self, request):
+        """
+        Handle GET requests to list all milestones or retrieve a specific one.
+        Use query parameters for specific milestones (e.g., ?id=1).
+        """
+        milestone_id = request.query_params.get('id')
+        if milestone_id:
+            try:
+                milestone = ReferralMilestoneReward.objects.get(id=milestone_id)
+                serializer = ReferralMilestoneRewardSerializer(milestone)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            except ReferralMilestoneReward.DoesNotExist:
+                return Response({"error": "Milestone not found."}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            milestones = ReferralMilestoneReward.objects.all()
+            serializer = ReferralMilestoneRewardSerializer(milestones, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        """
+        Handle POST requests to create a new milestone.
+        """
+        serializer = ReferralMilestoneRewardSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request):
+        """
+        Handle PUT requests to update an existing milestone.
+        Requires 'id' in the request body.
+        """
+        milestone_id = request.data.get('id')
+        if not milestone_id:
+            return Response({"error": "ID is required for updating a milestone."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            milestone = ReferralMilestoneReward.objects.get(id=milestone_id)
+            serializer = ReferralMilestoneRewardSerializer(milestone, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except ReferralMilestoneReward.DoesNotExist:
+            return Response({"error": "Milestone not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request):
+        """
+        Handle DELETE requests to delete a milestone.
+        Requires 'id' in the request body.
+        """
+        milestone_id = request.data.get('id')
+        if not milestone_id:
+            return Response({"error": "ID is required to delete a milestone."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            milestone = ReferralMilestoneReward.objects.get(id=milestone_id)
+            milestone.delete()
+            return Response({"message": "Milestone deleted successfully."}, status=status.HTTP_200_OK)
+        except ReferralMilestoneReward.DoesNotExist:
+            return Response({"error": "Milestone not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        
+        
+        
+        
+        
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def signup(request):
+    username = request.data.get('username')
+    email = request.data.get('email')
+    password = request.data.get('password')
+    first_name = request.data.get('first_name')
+    last_name = request.data.get('last_name')
+    whatsapp_number = request.data.get('whatsapp_number')
+    referral_code = request.data.get('referral_code', None)  # Get the referral code
+
+    # Validate required fields
+    if not username or not email or not password or not first_name or not last_name or not whatsapp_number:
+        return Response({'error': 'All fields are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if CustomUser.objects.filter(username=username).exists():
+        return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if CustomUser.objects.filter(email=email).exists():
+        return Response({'error': 'Email already exists'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        with transaction.atomic():  # Use atomic transactions to ensure consistency
+            # Create the user
+            user = CustomUser.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+                whatsapp_number=whatsapp_number,
+            )
+
+            # If referral code is provided, handle referral logic
+            if referral_code:
+                try:
+                    # Try to get the referrer user by their referral code
+                    referrer = CustomUser.objects.get(referral_code=referral_code)
+
+                    # Set the 'referred_by' field for the new user
+                    user.referred_by = referrer
+                    user.save()
+
+                    # Create the referral record
+                    Referral.objects.create(referred_by=referrer, referred_to=user)
+
+                except CustomUser.DoesNotExist:
+                    return Response({'error': 'Invalid referral code.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Serialize and return the created user data
+            serializer = UserSerializer(user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_referral_link(request):
+    """
+    API endpoint to fetch the referral link for the logged-in user.
+    """
+    try:
+        user = request.user
+        referral_link = user.generate_referral_link()  # Using the method from the CustomUser model
+        return Response({"referral_link": referral_link}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    
+    
+    
+    
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_my_referred_users(request):
+    """
+    Get the referred users and tasks completed for the logged-in user.
+    """
+    user = request.user
+    referrals = Referral.objects.filter(referred_by=user).values(
+        'referred_to__username',  # Only include the username
+        'tasks_completed',  # Include tasks completed
+    )
+
+    return Response({"referrals": list(referrals)})
+
+
+
+
+
+
+
+class CoinConversionRateAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        """
+        Get the current conversion rates.
+        """
+        rates = CoinConversionRate.objects.all()
+        serializer = CoinConversionRateSerializer(rates, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        """
+        Add a new conversion rate.
+        """
+        serializer = CoinConversionRateSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request):
+        """
+        Update an existing conversion rate.
+        """
+        rate_id = request.data.get('id')
+        try:
+            rate = CoinConversionRate.objects.get(id=rate_id)
+            serializer = CoinConversionRateSerializer(rate, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except CoinConversionRate.DoesNotExist:
+            return Response({"error": "Conversion rate not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request):
+        """
+        Delete a conversion rate.
+        """
+        rate_id = request.data.get('id')
+        try:
+            rate = CoinConversionRate.objects.get(id=rate_id)
+            rate.delete()
+            return Response({"message": "Conversion rate deleted successfully."}, status=status.HTTP_200_OK)
+        except CoinConversionRate.DoesNotExist:
+            return Response({"error": "Conversion rate not found."}, status=status.HTTP_404_NOT_FOUND)

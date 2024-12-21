@@ -4,7 +4,9 @@ from .views import (
     ActiveTaskView, ProtectedView, TaskListCreateView, TaskAssignmentView, SubmitTaskView, TaskHistoryView,
     AdminReviewTaskView, RedemptionRequestView, RedemptionHistoryView, AdminRedemptionReviewView, generate_token, 
     RefreshTokenView, WalletDetailView, AdminDashboardMetricsView, AdminRedemptionRequestView, 
-    AdminUserListView, SubmittedTasksView,AdminUploadTaskView,ProfileView,ExtractMediaIDFromTaskView,ManualVerifyTaskAPIView
+    AdminUserListView, SubmittedTasksView,AdminUploadTaskView,ProfileView,ExtractMediaIDFromTaskView,ManualVerifyTaskAPIView,get_referral_link, get_my_referred_users,ReferralMilestoneRewardAPIView,
+    CoinConversionRateAPIView,
+    
 )
 
 urlpatterns = [
@@ -31,6 +33,7 @@ urlpatterns = [
     # Wallet Management
     path('wallet/', WalletDetailView.as_view(), name='wallet_detail'),
     path('wallet/redeem/', RedemptionRequestView.as_view(), name='redeem_points'),
+   
 
     # Redemption Management
     path('redemption-requests/', RedemptionRequestView.as_view(), name='redemption_requests'),
@@ -45,4 +48,11 @@ urlpatterns = [
     path('admin/dashboard-metrics/', AdminDashboardMetricsView.as_view(), name='admin_dashboard_metrics'),
     path('admin/review-task/<int:pk>/', AdminReviewTaskView.as_view(), name='review_task'),
     path("extract-media-id-from-task/", ExtractMediaIDFromTaskView.as_view(), name="extract-media-id-from-task"),
+    path("referral-milestones/", ReferralMilestoneRewardAPIView.as_view(), name="referral-milestones"),
+    path('coin-conversion-rate/', CoinConversionRateAPIView.as_view(), name='coin-conversion-rate'),
+    
+    
+    
+    path('get-referral-link/', get_referral_link, name='get-referral-link'),
+    path('referral-detail/', get_my_referred_users, name='who_referred_me'),
 ]
